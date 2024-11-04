@@ -1,0 +1,37 @@
+app = 'should-i-seek-refuge-in-canada'
+primary_region = 'ord'
+
+[build]
+dockerfile = "./Dockerfile"
+
+[env]
+LISTEN_HOSTNAME = "0.0.0.0"
+LISTEN_PORT = "8080"
+
+[[vm]]
+size = "shared-cpu-1x"
+
+[deploy]
+strategy = "immediate"
+
+[http_service]
+internal_port = 8080
+force_https = true
+auto_stop_machines = false
+auto_start_machines = true
+min_machines_running = 1
+
+[http_service.concurrency]
+type = "requests"
+hard_limit = 1000
+soft_limit = 500
+
+[[http_service.checks]]
+grace_period = "3s"
+interval = "30s"
+method = "GET"
+timeout = "5s"
+path = "/index.html"
+
+[experimental]
+cmd = ["bun", "run", "dist/main.js"]

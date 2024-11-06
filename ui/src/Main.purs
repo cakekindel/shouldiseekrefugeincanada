@@ -6,6 +6,7 @@ import Control.Alt (class Alt)
 import Control.Monad.Error.Class (class MonadError, liftMaybe)
 import Control.Monad.Maybe.Trans (runMaybeT)
 import DOM.HTML.Indexed.InputType (InputType(..))
+import Data.Array as Array
 import Data.Maybe (Maybe(..))
 import Data.Newtype (wrap)
 import Data.Variant (Variant)
@@ -17,9 +18,9 @@ import Effect.Exception (Error, error)
 import Halogen (modify_)
 import Halogen as H
 import Halogen.Aff as H.Aff
-import Halogen.HTML (HTML, a, div, form, h1, h2, img, input, label, span, text)
-import Halogen.HTML.Events (onChange)
-import Halogen.HTML.Properties (checked, class_, href, src, type_)
+import Halogen.HTML (HTML, a, button, div, form, h1, h2, img, input, label, span, text)
+import Halogen.HTML.Events (onChange, onClick)
+import Halogen.HTML.Properties (ButtonType(..), checked, class_, href, src, type_)
 import Halogen.Subscription as H.Subscription
 import Halogen.VDom.Driver as H.VDom
 import Routing.PushState (PushStateInterface)
@@ -44,15 +45,15 @@ main = H.Aff.runHalogenAff do
 type Action = Variant
   ( init :: Unit
   , nav :: Route
-  , toggleWhiteMan :: Unit
-  , toggleLikeCheetoMan :: Unit
+  , setWhiteMan :: Boolean
+  , setLikeCheetoMan :: Boolean
   )
 
 type State =
   { routing :: PushStateInterface
   , route :: Route
-  , whiteMan :: Boolean
-  , likeCheetoMan :: Boolean
+  , whiteMan :: Maybe Boolean
+  , likeCheetoMan :: Maybe Boolean
   }
 
 type Input = { routing :: PushStateInterface }
@@ -66,9 +67,9 @@ component
 component = H.mkComponent
   { initialState: \{ routing } ->
       { routing
-      , route: Route.Root
-      , whiteMan: false
-      , likeCheetoMan: false
+      , route: Route.Root []
+      , whiteMan: Nothing
+      , likeCheetoMan: Nothing
       }
   , eval: H.mkEval $ H.defaultEval
       { handleAction = liftEffect >=> handleAction
@@ -97,20 +98,50 @@ render { route, whiteMan, likeCheetoMan } =
         ]
   in
     case route of
-      Route.Root ->
+      Route.Root _ ->
         app
-          [ form
-              [ class_ $ wrap "m-12 gap-4 grid grid-cols-[1fr_min-content_min-content] auto-rows-min items-center justify-items-center" ]
-              [ label [ class_ $ wrap "justify-self-end" ] [ h2 [] [ text "Are you a white man?" ] ]
-              , input [ class_ $ wrap "h-[2rem] w-[2rem]", type_ InputCheckbox, checked whiteMan, onChange $ const $ pure $ Variant.inj (Proxy @"toggleWhiteMan") unit ]
-              , span [] [ text $ if whiteMan then "Yes" else "No" ]
-              , label [ class_ $ wrap "justify-self-end" ] [ h2 [] [ text "Do you support orange man?" ] ]
-              , input [ class_ $ wrap "h-[2rem] w-[2rem]", type_ InputCheckbox, checked likeCheetoMan, onChange $ const $ pure $ Variant.inj (Proxy @"toggleLikeCheetoMan") unit ]
-              , span [] [ text $ if likeCheetoMan then "Yes" else "No" ]
-              ]
-          , h1 [ class_ $ wrap "grow inline self-center text-6xl" ] [ text $ if likeCheetoMan then "GO FUCK YOURSELF." else if whiteMan then "PROBABLY NOT." else "TOO SOON TO TELL." ]
-          , footer
-          ]
+          $
+            [ form
+                [ class_ $ wrap "m-12 gap-4 grid grid-cols-[1fr_min-content_min-content] auto-rows-min items-center justify-items-center" ]
+                [ label [ class_ $ wrap "justify-self-end" ] [ h2 [] [ text "Are you a white man?" ] ]
+                , button
+                    [ class_ $ wrap $ "hover:bg-primary-100 text-neutral-900 font-bold text-4xl p-8" <> (if whiteMan == Just true then " bg-primary-200" else " bg-neutral-200")
+                    , type_ ButtonButton
+                    , onClick $ const $ pure $ Variant.inj (Proxy @"setWhiteMan") true
+                    ]
+                    [ text "Yes"
+                    ]
+                , button
+                    [ class_ $ wrap $ "hover:bg-primary-100 text-neutral-900 font-bold text-4xl p-8" <> (if whiteMan == Just false then " bg-primary-200" else " bg-neutral-200")
+                    , type_ ButtonButton
+                    , onClick $ const $ pure $ Variant.inj (Proxy @"setWhiteMan") false
+                    ]
+                    [ text "No"
+                    ]
+                , label [ class_ $ wrap "justify-self-end" ] [ h2 [] [ text "Do you support orange man?" ] ]
+                , button
+                    [ class_ $ wrap $ "hover:bg-primary-100 text-neutral-900 font-bold text-4xl p-8" <> (if likeCheetoMan == Just true then " bg-primary-200" else " bg-neutral-200")
+                    , type_ ButtonButton
+                    , onClick $ const $ pure $ Variant.inj (Proxy @"setLikeCheetoMan") true
+                    ]
+                    [ text "Yes"
+                    ]
+                , button
+                    [ class_ $ wrap $ "hover:bg-primary-100 text-neutral-900 font-bold text-4xl p-8" <> (if likeCheetoMan == Just false then " bg-primary-200" else " bg-neutral-200")
+                    , type_ ButtonButton
+                    , onClick $ const $ pure $ Variant.inj (Proxy @"setLikeCheetoMan") false
+                    ]
+                    [ text "No"
+                    ]
+                ]
+            , case whiteMan, likeCheetoMan of
+                Just whiteMan', Just likeCheetoMan' ->
+                  h1
+                    [ class_ $ wrap "grow inline self-center text-6xl" ]
+                    [ text $ if likeCheetoMan' then "GO FUCK YOURSELF." else if whiteMan' then "PROBABLY NOT." else "YEAH. :(" ]
+                _, _ -> div [ class_ $ wrap "grow" ] []
+            , footer
+            ]
 
 handleAction
   :: forall m o
@@ -137,10 +168,10 @@ handleAction =
     Variant.match
       { nav: \route ->
           H.modify_ (_ { route = route })
-            *> (_.routing <$> H.get)
-            >>= (liftEffect <<< flip Route.goto route)
+            *> H.get
+            >>= (\{ routing, route: prev } -> when (prev /= route) (liftEffect $ Route.goto routing route))
       , init: const $ initRouting
-      , toggleWhiteMan: const $ modify_ \s -> s { whiteMan = not s.whiteMan }
-      , toggleLikeCheetoMan: const $ modify_ \s -> s { likeCheetoMan = not s.likeCheetoMan }
+      , setWhiteMan: \a -> modify_ \s -> s { whiteMan = Just a }
+      , setLikeCheetoMan: \a -> modify_ \s -> s { likeCheetoMan = Just a }
       }
 
